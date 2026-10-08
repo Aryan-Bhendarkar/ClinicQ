@@ -1,0 +1,33 @@
+# secrets / env
+.env
+*.env
+!.env.example
+*.pem
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+*.db
+
+# node
+node_modules/
+dist/
+
+# terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+tfplan
+
+# editors / os
+.idea/
+.vscode/
+.DS_Store
+
+# tooling
+.playwright-mcp/
