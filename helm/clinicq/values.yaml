@@ -1,0 +1,49 @@
+backend:
+  image: ghcr.io/YOUR_GITHUB_USER/clinicq-backend
+  tag: latest            # CI overrides this with the Git commit SHA
+  port: 8000
+  replicas: 2
+
+frontend:
+  image: ghcr.io/YOUR_GITHUB_USER/clinicq-frontend
+  tag: latest            # CI overrides this with the Git commit SHA
+  port: 8080
+  replicas: 2
+
+imagePullSecrets: []     # e.g. [{name: ghcr-pull}] if the GHCR packages are private
+
+postgres:
+  image: postgres:16-alpine
+  database: clinicq
+  username: clinicq
+  password: change-me    # override: --set postgres.password=... (CI uses a GitHub secret)
+  storage: 2Gi
+  storageClassName: ""   # "" = cluster default (gp2/gp3 on EKS via the EBS CSI driver)
+
+resources:
+  backend:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 384Mi}
+  frontend:
+    requests: {cpu: 25m, memory: 32Mi}
+    limits: {cpu: 200m, memory: 128Mi}
+  postgres:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+
+ingress:
+  enabled: true
+  className: nginx
+  host: clinicq.local    # set "" to match any host (e.g. the raw ELB hostname)
+
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 50
+
+monitoring:
+  serviceMonitor:
+    enabled: true
+    releaseLabel: kube-prometheus-stack   # must match the Prometheus release name
+    interval: 15s

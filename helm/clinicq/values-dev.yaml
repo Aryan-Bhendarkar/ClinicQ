@@ -1,0 +1,19 @@
+# Local cluster (Docker Desktop / kind / minikube) with ingress-nginx installed.
+backend:
+  image: clinicq-backend
+  tag: local
+  replicas: 2
+frontend:
+  image: clinicq-frontend
+  tag: local
+  replicas: 2
+postgres:
+  storage: 1Gi
+ingress:
+  enabled: true
+  host: clinicq.local
+hpa:
+  maxReplicas: 4
+monitoring:
+  serviceMonitor:
+    enabled: false   # enable once kube-prometheus-stack CRDs exist

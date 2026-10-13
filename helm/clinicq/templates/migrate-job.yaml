@@ -1,0 +1,34 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "clinicq.fullname" . }}-migrate
+  labels:
+    {{- include "clinicq.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 10   # retries while PostgreSQL is still starting
+  template:
+    spec:
+      restartPolicy: OnFailure
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: migrate
+          image: "{{ .Values.backend.image }}:{{ .Values.backend.tag }}"
+          command: ["alembic", "upgrade", "head"]
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "clinicq.fullname" . }}-db
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: {{ include "clinicq.databaseUrl" . | quote }}

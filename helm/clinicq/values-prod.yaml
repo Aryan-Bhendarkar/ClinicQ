@@ -1,0 +1,17 @@
+# EKS. Image names/tags and the DB password are injected by the CI pipeline.
+backend:
+  replicas: 2
+frontend:
+  replicas: 2
+postgres:
+  storage: 5Gi
+ingress:
+  enabled: true
+  host: ""           # match the load balancer hostname directly
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+monitoring:
+  serviceMonitor:
+    enabled: true
