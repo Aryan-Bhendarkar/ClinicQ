@@ -1,0 +1,33 @@
+# LAB 1 - ImagePullBackOff
+# Apply, then investigate:
+#   kubectl apply -f troubleshooting/broken-image.yaml
+#   kubectl get pods -n clinicq-lab
+#   kubectl describe pod -n clinicq-lab -l app=broken-image      (look at Events)
+#   kubectl get events -n clinicq-lab --sort-by=.lastTimestamp
+# Root cause: the image tag does not exist. Fix:
+#   kubectl set image deployment/broken-image web=nginx:1.27-alpine -n clinicq-lab
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: clinicq-lab
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: broken-image
+  namespace: clinicq-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: broken-image
+  template:
+    metadata:
+      labels:
+        app: broken-image
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.99.99-does-not-exist
+          ports:
+            - containerPort: 80
