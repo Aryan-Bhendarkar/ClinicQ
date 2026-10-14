@@ -1,0 +1,7 @@
+# helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+#   -n ingress-nginx --create-namespace -f monitoring/ingress-nginx-values.yaml
+controller:
+  service:
+    type: LoadBalancer
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: nlb
