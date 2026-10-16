@@ -6,11 +6,12 @@ ClinicQ is a front-desk console for a medical clinic. Staff book appointments fo
 schedule, mark visits completed or cancelled, and the system refuses to double-book a doctor's time slot.
 
 The application is intentionally small. The focus is the delivery path: a commit on a laptop becomes a tested,
-scanned, versioned container image, deployed with Helm to a Kubernetes cluster that Terraform built on AWS, and
+scanned, versioned container image, deployed by ArgoCD (GitOps) to a Kubernetes cluster that Terraform built on AWS, and
 watched with Prometheus and Grafana.
 
 | Deliverable | Location |
 |---|---|
+| Presentation video (MP4) | [demo/ClinicQ-Presentation.mp4](demo/) |
 | Slide deck (PPT and PDF) | [demo/ClinicQ-DevOps-Capstone.pptx](demo/ClinicQ-DevOps-Capstone.pptx), [PDF](demo/ClinicQ-DevOps-Capstone.pdf) |
 | Evidence, problems solved, reproduction steps | [docs/SUBMISSION.md](docs/SUBMISSION.md) |
 | Screenshots | [docs/screenshots/](docs/screenshots/) |
@@ -30,11 +31,12 @@ watched with Prometheus and Grafana.
 9. [Security scanning](#security-scanning)
 10. [Terraform (AWS)](#terraform-aws)
 11. [Kubernetes and Helm](#kubernetes-and-helm)
-12. [Observability](#observability)
-13. [Troubleshooting lab](#troubleshooting-lab)
-14. [Design decisions](#design-decisions)
-15. [Known limitations](#known-limitations)
-16. [Evidence](#evidence)
+12. [GitOps with ArgoCD](#gitops-with-argocd)
+13. [Observability](#observability)
+14. [Troubleshooting lab](#troubleshooting-lab)
+15. [Design decisions](#design-decisions)
+16. [Known limitations](#known-limitations)
+17. [Evidence](#evidence)
 
 ## Architecture
 
@@ -44,9 +46,10 @@ Developer -> GitHub -> GitHub Actions
                          |- frontend build
                          |- Docker build (backend + frontend)
                          |- Trivy scan (fails on HIGH/CRITICAL)
-                         '- push to GHCR, tagged with the commit SHA
+                         |- push to GHCR, tagged with the commit SHA
+                         '- commit the new image tag to helm/clinicq/values-prod.yaml
                                         |
-                                  helm upgrade --install
+                         ArgoCD watches the repo and syncs the cluster (GitOps)
                                         |
 Terraform -> AWS VPC (2 public + 2 private subnets, NAT) -> EKS (managed node group)
                                         |
@@ -69,6 +72,7 @@ Terraform -> AWS VPC (2 public + 2 private subnets, NAT) -> EKS (managed node gr
 | Security | Trivy image scanning |
 | Infrastructure as code | Terraform (VPC, EKS, add-ons) |
 | Orchestration | Kubernetes 1.31 on Amazon EKS, Helm, Ingress NGINX, HPA |
+| GitOps | ArgoCD, automated sync with prune and self-heal |
 | Observability | kube-prometheus-stack (Prometheus, Grafana), ServiceMonitor |
 
 ## Repository layout
@@ -79,6 +83,7 @@ frontend/           React app, nginx template, multi-stage Dockerfile
 docker-compose.yml  full local stack (postgres + backend + frontend)
 terraform/          AWS VPC + EKS + add-ons (see terraform/README.md)
 helm/clinicq/       Helm chart: deployments, services, ingress, HPA, postgres, migration job, ServiceMonitor
+argocd/             ArgoCD Application that deploys the chart from this repository
 k8s/                namespace and default StorageClass manifests
 monitoring/         Prometheus/Grafana/ingress-nginx values and the Grafana dashboard
 troubleshooting/    three deliberately broken manifests for the live demo
@@ -156,10 +161,9 @@ real database. They run before any image is built, so a failing test stops the p
 2. **build-scan-push** (needs test): build both images, scan both with Trivy, log in to GHCR, push.
    Images are tagged with the **commit SHA**, never `latest`. The push steps come after the scan steps, so nothing
    that fails a scan is published.
-3. **deploy** (needs build-scan-push): `helm upgrade --install` against the cluster. It only runs when a
-   `KUBE_CONFIG_DATA` repository secret exists; see [Known limitations](#known-limitations).
-
-Repository secrets used by the deploy job: `KUBE_CONFIG_DATA` (base64 kubeconfig) and `DB_PASSWORD`.
+3. **update-gitops** (needs build-scan-push): writes the new commit SHA into the image tags of
+   `helm/clinicq/values-prod.yaml` and commits it. ArgoCD sees that commit and rolls the cluster forward, so the
+   pipeline needs no cluster credentials. The job uses the built-in `GITHUB_TOKEN`; no repository secrets are required.
 
 ## Security scanning
 
@@ -215,19 +219,45 @@ helm repo add prometheus-community https://prometheus-community.github.io/helm-c
 helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack -n monitoring --create-namespace -f monitoring/prometheus-values.yaml
 helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx --create-namespace -f monitoring/ingress-nginx-values.yaml
 kubectl apply -f monitoring/dashboards/clinicq-dashboard.yaml
-helm upgrade --install clinicq ./helm/clinicq -n clinicq -f helm/clinicq/values-prod.yaml \
-  --set backend.image=ghcr.io/<user>/clinicq-backend --set frontend.image=ghcr.io/<user>/clinicq-frontend \
-  --set backend.tag=<commit-sha> --set frontend.tag=<commit-sha> --set postgres.password=<secret> --wait
+# the database password is created in the cluster, never committed
+kubectl create namespace clinicq
+kubectl create secret generic clinicq-db -n clinicq --from-literal=POSTGRES_PASSWORD="$(openssl rand -hex 12)"
+# deploy the app through ArgoCD (see the next section)
+kubectl apply -f argocd/application.yaml
 ```
 
 Check it:
 
 ```bash
 kubectl get pods,svc,ingress,hpa -n clinicq
-helm list -n clinicq
+kubectl get application -n argocd
 ```
 
 `values-dev.yaml` targets a local cluster (Docker Desktop, kind, minikube) with local images.
+
+## GitOps with ArgoCD
+
+ArgoCD runs in the `argocd` namespace and owns the application. `argocd/application.yaml` points it at this
+repository: path `helm/clinicq`, values file `values-prod.yaml`, destination namespace `clinicq`, with automated sync,
+**prune** (resources removed from Git are removed from the cluster) and **self-heal** (manual drift is reverted).
+
+```bash
+kubectl create namespace argocd
+kubectl apply -n argocd --server-side -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl port-forward -n argocd svc/argocd-server 8081:443          # https://localhost:8081, user admin
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+```
+
+The flow for every change:
+
+1. Push code to `main`.
+2. GitHub Actions tests, builds, scans and pushes the images tagged with the commit SHA.
+3. The `update-gitops` job commits the new SHA into `helm/clinicq/values-prod.yaml`.
+4. ArgoCD detects the new commit, renders the chart and rolls the Deployments forward; the Application shows
+   `Synced` and `Healthy`.
+
+The database password is the one thing that stays out of Git: the chart reads it from the `clinicq-db` Secret
+(`postgres.existingSecret`), which is created with `kubectl`.
 
 ## Observability
 
@@ -270,15 +300,15 @@ Three deliberately broken manifests in `troubleshooting/`, each with the diagnos
 - **Nothing is pushed unless tests and Trivy pass.**
 - **PostgreSQL runs in the cluster** (StatefulSet + EBS volume) to keep the capstone self-contained. In production I
   would use Amazon RDS for backups, patching and Multi-AZ failover.
-- **Secrets**: the database password is a Kubernetes Secret fed at deploy time. No credentials are in Git.
+- **GitOps**: the cluster changes only through a Git commit, so every deployment is reviewable, auditable and
+  revertible, and CI needs no cluster credentials.
+- **Secrets**: the database password is a Kubernetes Secret created with `kubectl` and referenced by the chart
+  through `postgres.existingSecret`. No credentials are in Git.
 
 ## Known limitations
 
 - The AWS account used (Free Tier plan) cannot create load balancers, so the Ingress is reached with
   `kubectl port-forward` instead of a public address. The routing rules are unchanged.
-- The pipeline's `deploy` job is conditional on a `KUBE_CONFIG_DATA` secret. It is not configured, so the job
-  completes without deploying, and the cluster was deployed with `helm upgrade --install` using the SHA-tagged
-  images the pipeline pushed.
 
 ## Evidence
 

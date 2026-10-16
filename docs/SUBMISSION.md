@@ -12,7 +12,7 @@ Region: `ap-south-1`. All screenshots are in [docs/screenshots/](screenshots/).
 | M5 CI/CD | pytest, frontend build, image build, SHA-tagged push to GHCR | `m5-01-github-actions-run-success.png`, `m5-02-ghcr-package-sha-tags.png` |
 | M6 Security | Trivy scans both images, fails on HIGH/CRITICAL | `m6-01-trivy-backend-scan.png` |
 | M7 Terraform | VPC (2 public + 2 private subnets, NAT), EKS, node group, EBS CSI, metrics-server | `m7-01` to `m7-05` |
-| M8 Kubernetes + Helm | Helm release, 2+ replicas, ClusterIP Services, Ingress, HPA | `m8-01` to `m8-06` |
+| M8 Kubernetes + Helm | Helm chart deployed by ArgoCD, 2+ replicas, ClusterIP Services, Ingress, HPA | `m8-01` to `m8-06` |
 | M9 Observability | `/metrics`, Prometheus target UP, Grafana dashboard with live panels | `m9-01` to `m9-03` |
 | M10 Docs | README, this file, slide deck | `README.md`, `demo/` |
 
@@ -40,11 +40,12 @@ These are worth explaining in the presentation: each one is a real troubleshooti
 | `terraform apply` failed with expired token | Short-lived exported credentials | `credential_process` profile that refreshes automatically |
 | Trivy action failed to install | Pinned action tag could not fetch its Trivy binary | Run Trivy from its container image |
 
-## Deployment note (be upfront about this)
+## Deployment flow (GitOps)
 
-The pipeline builds, tests, scans and pushes the images on every push to `main`. The `deploy` job only runs
-when a `KUBE_CONFIG_DATA` secret is configured; it was not, so the job completes without deploying. The cluster
-was deployed with `helm upgrade --install` from my laptop using the SHA-tagged images the pipeline pushed.
+The pipeline tests, builds, scans and pushes the images on every push to `main`, then its `update-gitops` job
+commits the new commit SHA into `helm/clinicq/values-prod.yaml`. ArgoCD watches the repository and syncs the
+cluster to that commit, so the pipeline needs no cluster credentials. The database password is the only value kept
+out of Git: it is created in the cluster as the `clinicq-db` Secret and referenced through `postgres.existingSecret`.
 
 ## How to reproduce
 
@@ -68,14 +69,17 @@ helm repo add prometheus-community https://prometheus-community.github.io/helm-c
 helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack -n monitoring --create-namespace -f monitoring/prometheus-values.yaml
 helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx --create-namespace -f monitoring/ingress-nginx-values.yaml
 kubectl apply -f monitoring/dashboards/clinicq-dashboard.yaml
-helm upgrade --install clinicq ./helm/clinicq -n clinicq -f helm/clinicq/values-prod.yaml `
-  --set backend.image=ghcr.io/<user>/clinicq-backend --set frontend.image=ghcr.io/<user>/clinicq-frontend `
-  --set backend.tag=<commit-sha> --set frontend.tag=<commit-sha> --set postgres.password=<generated-secret> --wait
+kubectl create namespace argocd
+kubectl apply -n argocd --server-side -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl create namespace clinicq
+kubectl create secret generic clinicq-db -n clinicq --from-literal=POSTGRES_PASSWORD=<generated-secret>
+kubectl apply -f argocd/application.yaml        # ArgoCD deploys helm/clinicq from this repository
 
 # 4. Reach it (this account cannot create load balancers)
 kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 8080:80     # app
 kubectl port-forward -n monitoring svc/kube-prometheus-stack-prometheus 9090   # Prometheus
 kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3001:80 # Grafana: admin / admin-change-me
+kubectl port-forward -n argocd svc/argocd-server 8081:443                       # ArgoCD: https://localhost:8081, user admin
 
 # 5. Tear down (run from the terraform folder)
 helm uninstall clinicq -n clinicq; helm uninstall kube-prometheus-stack -n monitoring; helm uninstall ingress-nginx -n ingress-nginx
