@@ -2,11 +2,11 @@
 # image tags below with the new commit SHA after it pushes the images.
 backend:
   image: ghcr.io/aryan-bhendarkar/clinicq-backend
-  tag: 8437dbefe1062ea770ed42fcc390f4c583471283
+  tag: fcded18fc2a786216a3030cbbee5b6861e71963c
   replicas: 2
 frontend:
   image: ghcr.io/aryan-bhendarkar/clinicq-frontend
-  tag: 8437dbefe1062ea770ed42fcc390f4c583471283
+  tag: fcded18fc2a786216a3030cbbee5b6861e71963c
   replicas: 2
 postgres:
   storage: 5Gi
