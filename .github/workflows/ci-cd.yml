@@ -82,11 +82,15 @@ jobs:
 
       - name: Trivy scan - backend (fails on HIGH/CRITICAL)
         run: |
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image \n            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \n            ${IMAGE_PREFIX}-backend:${TAG}
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
+            ${IMAGE_PREFIX}-backend:${TAG}
 
       - name: Trivy scan - frontend (fails on HIGH/CRITICAL)
         run: |
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image \n            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \n            ${IMAGE_PREFIX}-frontend:${TAG}
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
+            ${IMAGE_PREFIX}-frontend:${TAG}
 
       - name: Log in to GHCR
         if: github.event_name == 'push'
