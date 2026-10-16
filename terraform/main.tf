@@ -65,6 +65,19 @@ module "eks" {
   cluster_endpoint_public_access           = true
   enable_cluster_creator_admin_permissions = true
 
+  # The EKS metrics-server add-on listens on 10251; the control plane must reach it
+  # or the Metrics API stays unavailable and the HPA reports <unknown>.
+  node_security_group_additional_rules = {
+    ingress_cluster_10251_metrics_server = {
+      description                   = "Cluster API to metrics-server"
+      protocol                      = "tcp"
+      from_port                     = 10251
+      to_port                       = 10251
+      type                          = "ingress"
+      source_cluster_security_group = true
+    }
+  }
+
   cluster_addons = {
     coredns = {}
     # Worker nodes cannot become Ready without networking, so these two must be

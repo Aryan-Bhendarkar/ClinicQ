@@ -1,0 +1,16 @@
+# EKS only ships a legacy in-tree gp2 class that is not the default. This default
+# gp3 class uses the EBS CSI driver add-on installed by Terraform, so PostgreSQL's
+# PersistentVolumeClaim can bind.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+parameters:
+  type: gp3
+  encrypted: "true"
