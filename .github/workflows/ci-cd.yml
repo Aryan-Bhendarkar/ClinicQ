@@ -106,44 +106,28 @@ jobs:
           docker push ${IMAGE_PREFIX}-backend:${TAG}
           docker push ${IMAGE_PREFIX}-frontend:${TAG}
 
-  deploy:
-    name: Deploy to EKS with Helm
+  update-gitops:
+    name: Update image tags for ArgoCD (GitOps)
     needs: build-scan-push
-    # Runs only on main pushes and only when the cluster kubeconfig secret exists.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-    env:
-      KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
-      - uses: azure/setup-helm@v4
-
-      - name: Configure kubectl
-        if: env.KUBE_CONFIG_DATA != ''
+      - name: Point values-prod.yaml at the new image tag
         run: |
-          mkdir -p ~/.kube
-          echo "$KUBE_CONFIG_DATA" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
+          sed -i '/^backend:/,/^frontend:/ s|^  tag: .*|  tag: ${{ github.sha }}|' helm/clinicq/values-prod.yaml
+          sed -i '/^frontend:/,/^postgres:/ s|^  tag: .*|  tag: ${{ github.sha }}|' helm/clinicq/values-prod.yaml
+          git diff --stat
 
-      - name: Helm upgrade --install
-        if: env.KUBE_CONFIG_DATA != ''
-        env:
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      - name: Commit the new tag (ArgoCD syncs from this commit)
         run: |
-          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          helm upgrade --install clinicq ./helm/clinicq \
-            --namespace clinicq --create-namespace \
-            -f helm/clinicq/values-prod.yaml \
-            --set backend.image=ghcr.io/${OWNER}/clinicq-backend \
-            --set frontend.image=ghcr.io/${OWNER}/clinicq-frontend \
-            --set backend.tag=${{ github.sha }} \
-            --set frontend.tag=${{ github.sha }} \
-            ${DB_PASSWORD:+--set postgres.password="$DB_PASSWORD"} \
-            --wait --timeout 5m
-
-      - name: Skip notice
-        if: env.KUBE_CONFIG_DATA == ''
-        run: echo "KUBE_CONFIG_DATA secret not set - skipping deploy (cluster not provisioned)."
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet; then echo "Tags already up to date"; exit 0; fi
+          git add helm/clinicq/values-prod.yaml
+          git commit -m "Deploy image tag ${GITHUB_SHA::7}"
+          git pull --rebase origin main
+          git push origin HEAD:main
