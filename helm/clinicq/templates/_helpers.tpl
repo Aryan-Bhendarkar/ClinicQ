@@ -16,3 +16,11 @@ helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
 {{- define "clinicq.databaseUrl" -}}
 postgresql+psycopg://{{ .Values.postgres.username }}:$(POSTGRES_PASSWORD)@{{ include "clinicq.fullname" . }}-postgres:5432/{{ .Values.postgres.database }}
 {{- end -}}
+
+{{- define "clinicq.dbSecretName" -}}
+{{- if .Values.postgres.existingSecret -}}
+{{- .Values.postgres.existingSecret -}}
+{{- else -}}
+{{- include "clinicq.fullname" . }}-db
+{{- end -}}
+{{- end -}}

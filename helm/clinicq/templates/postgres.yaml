@@ -46,7 +46,7 @@ spec:
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "clinicq.fullname" . }}-db
+                  name: {{ include "clinicq.dbSecretName" . }}
                   key: POSTGRES_PASSWORD
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata

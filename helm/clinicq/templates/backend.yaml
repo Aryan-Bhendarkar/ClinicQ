@@ -51,7 +51,7 @@ spec:
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "clinicq.fullname" . }}-db
+                  name: {{ include "clinicq.dbSecretName" . }}
                   key: POSTGRES_PASSWORD
             - name: DATABASE_URL
               value: {{ include "clinicq.databaseUrl" . | quote }}
