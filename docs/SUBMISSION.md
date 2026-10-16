@@ -12,7 +12,7 @@ Region: `ap-south-1`. All screenshots are in [docs/screenshots/](screenshots/).
 | M5 CI/CD | pytest, frontend build, image build, SHA-tagged push to GHCR | `m5-01-github-actions-run-success.png`, `m5-02-ghcr-package-sha-tags.png` |
 | M6 Security | Trivy scans both images, fails on HIGH/CRITICAL | `m6-01-trivy-backend-scan.png` |
 | M7 Terraform | VPC (2 public + 2 private subnets, NAT), EKS, node group, EBS CSI, metrics-server | `m7-01` to `m7-05` |
-| M8 Kubernetes + Helm | Helm chart deployed by ArgoCD, 2+ replicas, ClusterIP Services, Ingress, HPA | `m8-01` to `m8-06` |
+| M8 Kubernetes + Helm | Helm chart deployed by ArgoCD, 2+ replicas, ClusterIP Services, Ingress, HPA | `m8-01` to `m8-08` (ArgoCD: `m8-07`, `m8-08`) |
 | M9 Observability | `/metrics`, Prometheus target UP, Grafana dashboard with live panels | `m9-01` to `m9-03` |
 | M10 Docs | README, this file, slide deck | `README.md`, `demo/` |
 
@@ -74,12 +74,15 @@ kubectl apply -n argocd --server-side -f https://raw.githubusercontent.com/argop
 kubectl create namespace clinicq
 kubectl create secret generic clinicq-db -n clinicq --from-literal=POSTGRES_PASSWORD=<generated-secret>
 kubectl apply -f argocd/application.yaml        # ArgoCD deploys helm/clinicq from this repository
+kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge -p '{"data":{"server.insecure":"true"}}'   # UI over plain HTTP
+kubectl rollout restart deploy/argocd-server -n argocd
+kubectl patch configmap argocd-cm -n argocd --type merge --patch-file argocd/ingress-health.yaml   # Ingress counts as healthy once it exists
 
 # 4. Reach it (this account cannot create load balancers)
 kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 8080:80     # app
 kubectl port-forward -n monitoring svc/kube-prometheus-stack-prometheus 9090   # Prometheus
 kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3001:80 # Grafana: admin / admin-change-me
-kubectl port-forward -n argocd svc/argocd-server 8081:443                       # ArgoCD: https://localhost:8081, user admin
+kubectl port-forward -n argocd svc/argocd-server 8081:80                        # ArgoCD: http://localhost:8081, user admin
 
 # 5. Tear down (run from the terraform folder)
 helm uninstall clinicq -n clinicq; helm uninstall kube-prometheus-stack -n monitoring; helm uninstall ingress-nginx -n ingress-nginx

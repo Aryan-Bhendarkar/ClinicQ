@@ -244,7 +244,12 @@ repository: path `helm/clinicq`, values file `values-prod.yaml`, destination nam
 ```bash
 kubectl create namespace argocd
 kubectl apply -n argocd --server-side -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-kubectl port-forward -n argocd svc/argocd-server 8081:443          # https://localhost:8081, user admin
+# the UI is only reached through a local tunnel, so serve it over plain HTTP (no certificate warning)
+kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge -p '{"data":{"server.insecure":"true"}}'
+kubectl rollout restart deploy/argocd-server -n argocd
+# this account cannot create load balancers, so treat an Ingress as healthy once it exists
+kubectl patch configmap argocd-cm -n argocd --type merge --patch-file argocd/ingress-health.yaml
+kubectl port-forward -n argocd svc/argocd-server 8081:80          # http://localhost:8081, user admin
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
 ```
 
@@ -318,7 +323,9 @@ Three deliberately broken manifests in `troubleshooting/`, each with the diagnos
 | GitHub Actions: test, build, Trivy scan, push | GHCR images tagged with the commit SHA |
 | ![Trivy](docs/screenshots/m6-01-trivy-backend-scan.png) | ![EKS](docs/screenshots/m7-04-aws-eks-cluster.png) |
 | Trivy scan: zero findings | EKS cluster in ap-south-1 |
-| ![App via ingress](docs/screenshots/m8-06-app-via-ingress.png) | ![Grafana](docs/screenshots/m9-03-grafana-dashboard.png) |
-| App served through the Ingress | Grafana dashboard with live metrics |
+| ![App via ingress](docs/screenshots/m8-06-app-via-ingress.png) | ![ArgoCD](docs/screenshots/m8-08-argocd-clinicq-synced.png) |
+| App served through the Ingress | ArgoCD: Healthy and Synced; last sync is the pipeline's tag commit |
+| ![Prometheus](docs/screenshots/m9-02-prometheus-targets.png) | ![Grafana](docs/screenshots/m9-03-grafana-dashboard.png) |
+| Prometheus: backend targets UP | Grafana dashboard with live metrics |
 
 All screenshots are in [docs/screenshots/](docs/screenshots/).
