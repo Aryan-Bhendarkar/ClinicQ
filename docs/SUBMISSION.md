@@ -14,7 +14,7 @@ Region: `ap-south-1`. All screenshots are in [docs/screenshots/](screenshots/).
 | M7 Terraform | VPC (2 public + 2 private subnets, NAT), EKS, node group, EBS CSI, metrics-server | `m7-01` to `m7-05` |
 | M8 Kubernetes + Helm | Helm release, 2+ replicas, ClusterIP Services, Ingress, HPA | `m8-01` to `m8-06` |
 | M9 Observability | `/metrics`, Prometheus target UP, Grafana dashboard with live panels | `m9-01` to `m9-03` |
-| M10 Docs | README, this file, presentation script | `README.md`, `docs/PRESENTATION.md` |
+| M10 Docs | README, this file, slide deck | `README.md`, `demo/` |
 
 ## M6 - Trivy explanation
 

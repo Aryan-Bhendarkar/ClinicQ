@@ -12,8 +12,6 @@ watched with Prometheus and Grafana.
 | Deliverable | Location |
 |---|---|
 | Slide deck (PPT and PDF) | [demo/ClinicQ-DevOps-Capstone.pptx](demo/ClinicQ-DevOps-Capstone.pptx), [PDF](demo/ClinicQ-DevOps-Capstone.pdf) |
-| Presentation video (MP4) | [demo/ClinicQ-Presentation.mp4](demo/) |
-| Video script | [docs/PRESENTATION.md](docs/PRESENTATION.md) |
 | Evidence, problems solved, reproduction steps | [docs/SUBMISSION.md](docs/SUBMISSION.md) |
 | Screenshots | [docs/screenshots/](docs/screenshots/) |
 
@@ -86,8 +84,8 @@ monitoring/         Prometheus/Grafana/ingress-nginx values and the Grafana dash
 troubleshooting/    three deliberately broken manifests for the live demo
 scripts/            load-test.sh
 .github/workflows/  CI/CD pipeline
-demo/               slide deck (PPT, PDF) and presentation video
-docs/               submission evidence, presentation script, screenshots
+demo/               slide deck (PPT and PDF)
+docs/               submission evidence and screenshots
 ```
 
 ## Run locally
