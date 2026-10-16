@@ -95,7 +95,7 @@ docs/               submission runbook and evidence
 ```bash
 cd terraform && terraform init && terraform apply          # VPC + EKS (~15 min)
 aws eks update-kubeconfig --region ap-south-1 --name clinicq-eks
-kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/namespace.yaml -f k8s/storageclass.yaml   # gp3 default class for the Postgres volume
 # ingress controller + monitoring
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
@@ -109,7 +109,26 @@ helm upgrade --install clinicq ./helm/clinicq -n clinicq -f helm/clinicq/values-
 terraform destroy   # when finished, to stop AWS charges
 ```
 
-The full step-by-step runbook with the evidence to capture is in [docs/SUBMISSION.md](docs/SUBMISSION.md).
+The full runbook, the problems hit while deploying and how they were fixed are in [docs/SUBMISSION.md](docs/SUBMISSION.md).
+The presentation script is in [docs/PRESENTATION.md](docs/PRESENTATION.md).
+
+**Known limitations**
+
+- The AWS account used (Free Tier plan) cannot create load balancers, so the Ingress is reached with
+  `kubectl port-forward` instead of a public address.
+- The pipeline's `deploy` job is conditional on a `KUBE_CONFIG_DATA` secret. It is not configured, so the cluster
+  was deployed with `helm upgrade --install` using the SHA-tagged images the pipeline pushed.
+
+## Evidence
+
+| | |
+|---|---|
+| ![CI run](docs/screenshots/m5-01-github-actions-run-success.png) | ![GHCR](docs/screenshots/m5-02-ghcr-package-sha-tags.png) |
+| GitHub Actions: test, build, Trivy scan, push | GHCR images tagged with the commit SHA |
+| ![Trivy](docs/screenshots/m6-01-trivy-backend-scan.png) | ![EKS](docs/screenshots/m7-04-aws-eks-cluster.png) |
+| Trivy scan: zero findings | EKS cluster in ap-south-1 |
+| ![App via ingress](docs/screenshots/m8-06-app-via-ingress.png) | ![Grafana](docs/screenshots/m9-03-grafana-dashboard.png) |
+| App served through the Ingress | Grafana dashboard with live metrics |
 
 ## Design decisions
 

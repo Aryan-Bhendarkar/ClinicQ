@@ -1,133 +1,94 @@
-# Submission runbook and evidence checklist
+# Submission evidence (module by module)
 
-Deadline: 16 Oct 2026, 11:59 PM. Late penalty: 5 points per 24 hours.
-Capture each screenshot below into `docs/screenshots/` and attach them to the Google Form.
+Repository: https://github.com/Aryan-Bhendarkar/ClinicQ
+Region: `ap-south-1`. All screenshots are in [docs/screenshots/](screenshots/).
 
-## 0. One-time setup
+| Module | What it shows | Evidence |
+|---|---|---|
+| M1 Application | React UI + FastAPI + PostgreSQL via Compose, 12 endpoints, 2 Alembic migrations | `01-app-running.png` |
+| M2 Testing | 15 pytest tests, in-memory SQLite test DB, `pytest.ini` + `conftest.py` | `m2-01-pytest-passing.png` |
+| M3 Git | 18+ commits with descriptive messages, `.gitignore` for env, caches, venv, node_modules, tfstate | `m3-01-commit-history.png` |
+| M4 Docker | Multi-stage frontend, non-root users (uid 10001 and 101), 3-service Compose | `01-app-running.png`, `backend/Dockerfile`, `frontend/Dockerfile` |
+| M5 CI/CD | pytest, frontend build, image build, SHA-tagged push to GHCR | `m5-01-github-actions-run-success.png`, `m5-02-ghcr-package-sha-tags.png` |
+| M6 Security | Trivy scans both images, fails on HIGH/CRITICAL | `m6-01-trivy-backend-scan.png` |
+| M7 Terraform | VPC (2 public + 2 private subnets, NAT), EKS, node group, EBS CSI, metrics-server | `m7-01` to `m7-05` |
+| M8 Kubernetes + Helm | Helm release, 2+ replicas, ClusterIP Services, Ingress, HPA | `m8-01` to `m8-06` |
+| M9 Observability | `/metrics`, Prometheus target UP, Grafana dashboard with live panels | `m9-01` to `m9-03` |
+| M10 Docs | README, this file, presentation script | `README.md`, `docs/PRESENTATION.md` |
 
-1. Create a **public** GitHub repo (e.g. `clinicq-devops-capstone`) and push this project (see the commit plan in section 1).
-2. Repo Settings -> Actions -> General -> Workflow permissions: **Read and write**.
-3. After the first successful run, GHCR packages are private by default. Either make both packages public
-   (Package settings -> Change visibility) or create an image pull secret and set `imagePullSecrets` in the chart.
-4. Authenticate AWS: `aws login` (or `aws configure`). Never commit keys.
+## M6 - Trivy explanation
 
-## 1. Git (M3, needs 10+ meaningful commits)
+Trivy scanned both container images, covering OS packages and Python or Node dependencies, for HIGH and
+CRITICAL vulnerabilities that have a fix available. My first local scan of the backend image found three HIGH
+CVEs in `starlette` (for example CVE-2025-62727, a denial of service through Range header merging), pulled in
+by an older FastAPI pin. The frontend image had two more in Alpine's `zlib` and `nghttp2`. I fixed them by
+upgrading FastAPI, Starlette and the Prometheus instrumentator, and by running `apk upgrade` in the runtime
+image. The rescan reported zero findings, which is what the pipeline's backend scan shows. The scan step uses
+`--exit-code 1`, so any new HIGH or CRITICAL finding fails the build before anything is pushed.
 
-Suggested commit sequence (one commit per step):
+## Problems hit while deploying, and how they were fixed
 
-```text
-feat(backend): add FastAPI app with doctors and appointments models
-feat(backend): add appointment CRUD, stats and double-booking guard
-feat(db): add Alembic migrations with seed doctors
-test(backend): add pytest suite with in-memory test database
-feat(frontend): add React booking console
-build(docker): add multi-stage non-root Dockerfiles and compose stack
-ci: add GitHub Actions pipeline with pytest, Trivy and GHCR push
-build(infra): add Terraform for AWS VPC and EKS
-feat(helm): add ClinicQ Helm chart with ingress, HPA and migration job
-feat(monitoring): add Prometheus values and Grafana dashboard
-docs: add troubleshooting labs, README and submission runbook
-```
+These are worth explaining in the presentation: each one is a real troubleshooting case.
 
-Evidence: screenshot of the GitHub commit history.
+| Symptom | Root cause | Fix |
+|---|---|---|
+| Node group stuck `CREATING`, add-ons `DEGRADED` | AWS Free Tier plan rejects `t3.medium` (`AsgInstanceLaunchFailures`) | Use `m7i-flex.large`, which is free-tier eligible |
+| Nodes could not become Ready | Networking add-ons were created after the node group | `before_compute = true` for `vpc-cni` and `kube-proxy` |
+| Postgres pod `Pending`, PVC unbound | EKS has no default StorageClass for the CSI driver | `k8s/storageclass.yaml` (default `gp3`, `ebs.csi.aws.com`) |
+| HPA showed `<unknown>` | Control plane could not reach metrics-server on port 10251 | Security group rule in Terraform |
+| Ingress had no address | AWS refused load balancer creation on this account | Reached the Ingress with `kubectl port-forward` |
+| `terraform apply` failed with expired token | Short-lived exported credentials | `credential_process` profile that refreshes automatically |
+| Trivy action failed to install | Pinned action tag could not fetch its Trivy binary | Run Trivy from its container image |
 
-## 2. Local run (M1, M2, M4)
+## Deployment note (be upfront about this)
 
-| Evidence | Command |
-|---|---|
-| pytest passing | `cd backend && pytest -v` |
-| Compose running | `docker compose up --build` |
-| App in browser | http://localhost:3000 (a screenshot is already in `docs/screenshots/01-app-running.png`) |
-| Swagger | http://localhost:8000/docs |
-| Non-root proof | `docker compose exec backend id -u` -> 10001, `docker compose exec frontend id -u` -> 101 |
-| DB table (demo) | `docker compose exec postgres psql -U clinicq -d clinicq -c "select * from appointments;"` |
+The pipeline builds, tests, scans and pushes the images on every push to `main`. The `deploy` job only runs
+when a `KUBE_CONFIG_DATA` secret is configured; it was not, so the job completes without deploying. The cluster
+was deployed with `helm upgrade --install` from my laptop using the SHA-tagged images the pipeline pushed.
 
-## 3. CI/CD, Trivy, GHCR (M5, M6)
+## How to reproduce
 
-Push to `main`. Evidence:
-- Green Actions run URL (jobs: test, build-scan-push; deploy is skipped until the cluster exists).
-- Screenshot of a Trivy step's output.
-- GHCR packages page showing `clinicq-backend` and `clinicq-frontend` with SHA tags.
+```powershell
+# 1. Local
+docker compose up --build            # http://localhost:3000
+cd backend; pytest -v
 
-**Trivy explanation to submit (edit to match your final run):**
-> Trivy scanned both container images (OS packages and Python/Node dependencies) for HIGH and CRITICAL
-> vulnerabilities with fixes available. On my first scan it found three HIGH CVEs in the backend's `starlette`
-> package (for example CVE-2025-62727, a denial of service through Range header merging) pulled in by an older
-> FastAPI pin, and two in the frontend's Alpine `zlib` and `nghttp2` libraries. I fixed them by upgrading FastAPI,
-> Starlette and the instrumentator, and by running `apk upgrade` in the runtime image; the rescan reported zero
-> findings, and the pipeline is set to fail (`exit-code: 1`) if any reappear.
-
-## 4. Terraform (M7)
-
-```bash
-cd terraform
-terraform init
-terraform plan -out tfplan          # screenshot the plan summary
-terraform apply tfplan              # ~15 minutes
-```
-Evidence: plan output, AWS Console screenshots of the VPC (2 public subnets) and the EKS cluster in `ap-south-1`.
-At the end: `terraform destroy` and screenshot the "Destroy complete" line. **Do this the same day** - EKS, NAT
-gateway and 3 x t3.medium cost roughly $0.25-0.30/hour.
-
-Already verified locally: `terraform init` and `terraform validate` succeed.
-
-## 5. Kubernetes + Helm + Ingress + HPA (M8)
-
-```bash
+# 2. AWS (sign in with `aws login`; add a profile that refreshes credentials)
+#    ~/.aws/config:  [profile tf]
+#                    credential_process = aws configure export-credentials --profile default --format process
+#                    region = ap-south-1
+$env:AWS_PROFILE = "tf"
+cd terraform; terraform init; terraform plan -out tfplan; terraform apply tfplan
 aws eks update-kubeconfig --region ap-south-1 --name clinicq-eks
-kubectl apply -f k8s/namespace.yaml
+
+# 3. Cluster add-ons and app
+kubectl apply -f k8s/namespace.yaml -f k8s/storageclass.yaml
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm repo update
-helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx --create-namespace -f monitoring/ingress-nginx-values.yaml
 helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack -n monitoring --create-namespace -f monitoring/prometheus-values.yaml
+helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx --create-namespace -f monitoring/ingress-nginx-values.yaml
 kubectl apply -f monitoring/dashboards/clinicq-dashboard.yaml
+helm upgrade --install clinicq ./helm/clinicq -n clinicq -f helm/clinicq/values-prod.yaml `
+  --set backend.image=ghcr.io/<user>/clinicq-backend --set frontend.image=ghcr.io/<user>/clinicq-frontend `
+  --set backend.tag=<commit-sha> --set frontend.tag=<commit-sha> --set postgres.password=<generated-secret> --wait
+
+# 4. Reach it (this account cannot create load balancers)
+kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 8080:80     # app
+kubectl port-forward -n monitoring svc/kube-prometheus-stack-prometheus 9090   # Prometheus
+kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3001:80 # Grafana: admin / admin-change-me
+
+# 5. Tear down (run from the terraform folder)
+helm uninstall clinicq -n clinicq; helm uninstall kube-prometheus-stack -n monitoring; helm uninstall ingress-nginx -n ingress-nginx
+kubectl delete namespace clinicq clinicq-lab monitoring ingress-nginx
+terraform destroy
 ```
 
-Get the cluster credentials into GitHub so the pipeline can deploy:
-```bash
-# base64 of a kubeconfig -> repo secret KUBE_CONFIG_DATA ; also add secret DB_PASSWORD
-aws eks update-kubeconfig --region ap-south-1 --name clinicq-eks --kubeconfig ./kc.yaml
-base64 -w0 kc.yaml            # paste into GitHub secret, then delete kc.yaml
+## Troubleshooting lab (live demo)
+
+```powershell
+kubectl apply -f troubleshooting/broken-image.yaml     # ImagePullBackOff: describe pod -> fix the tag
+kubectl apply -f troubleshooting/broken-service.yaml   # no endpoints: selector does not match pod labels
+kubectl apply -f troubleshooting/broken-probe.yaml     # pod never Ready: wrong readiness path
+kubectl delete namespace clinicq-lab
 ```
-Note: that kubeconfig uses `aws eks get-token`, which needs AWS credentials on the runner. Simplest options:
-(a) run the first `helm upgrade --install` yourself from your laptop (command in README) and use the pipeline
-deploy for the live demo only if you add AWS credentials as secrets, or (b) skip pipeline deploy and demo
-`helm upgrade` manually. The rubric requires the pipeline to build/scan/push; deploy-by-pipeline is a bonus.
-
-Evidence:
-```bash
-kubectl get pods -n clinicq        # all Running, 2 backend + 2 frontend + postgres
-kubectl get svc -n clinicq
-helm list -n clinicq
-kubectl get ingress -n clinicq     # open the ADDRESS in a browser -> screenshot
-kubectl get hpa -n clinicq
-```
-HPA demo: `scripts/load-test.sh http://<ingress-address> 180 30` while running `kubectl get hpa -n clinicq -w`.
-
-## 6. Observability (M9)
-
-```bash
-kubectl port-forward -n clinicq svc/clinicq-backend 8000:8000     # then: curl localhost:8000/metrics
-kubectl port-forward -n monitoring svc/kube-prometheus-stack-prometheus 9090   # Status -> Targets: clinicq UP
-kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3001:80   # admin / admin-change-me
-```
-Open the "ClinicQ - Application Overview" dashboard, run the load test, screenshot populated panels.
-
-## 7. Troubleshooting demo (live)
-
-```bash
-kubectl apply -f troubleshooting/broken-image.yaml     # ImagePullBackOff -> kubectl describe pod -> fix tag
-kubectl apply -f troubleshooting/broken-service.yaml   # no endpoints -> label mismatch -> patch selector
-kubectl apply -f troubleshooting/broken-probe.yaml     # never Ready -> bad probe path
-kubectl delete ns clinicq-lab                          # cleanup
-```
-Each file has the diagnosis and the fix in its header comment.
-
-## 8. Live demo script (3 minutes)
-
-1. Edit a UI string in `frontend/src/main.jsx`, commit, push.
-2. Show the Actions run: test -> build -> Trivy -> push.
-3. Show the new SHA tag in GHCR; `helm upgrade --install ... --set backend.tag=<sha>`; `kubectl rollout status`.
-4. Refresh the app via the Ingress address.
-5. Show Grafana, then break a Service and fix it.
+Each file's header comment contains the exact investigation commands and the fix.
