@@ -31,7 +31,8 @@ variable "vpc_cidr" {
 variable "node_instance_types" {
   description = "Instance types for the managed node group"
   type        = list(string)
-  default     = ["t3.medium"]
+  # m7i-flex.large is eligible on AWS Free Tier plan accounts (t3.medium is not).
+  default = ["m7i-flex.large"]
 }
 
 variable "node_min_size" {
@@ -41,10 +42,10 @@ variable "node_min_size" {
 
 variable "node_desired_size" {
   type    = number
-  default = 3
+  default = 2
 }
 
 variable "node_max_size" {
   type    = number
-  default = 4
+  default = 3
 }

@@ -66,9 +66,15 @@ module "eks" {
   enable_cluster_creator_admin_permissions = true
 
   cluster_addons = {
-    coredns    = {}
-    kube-proxy = {}
-    vpc-cni    = {}
+    coredns = {}
+    # Worker nodes cannot become Ready without networking, so these two must be
+    # installed before the node group is created.
+    kube-proxy = {
+      before_compute = true
+    }
+    vpc-cni = {
+      before_compute = true
+    }
     aws-ebs-csi-driver = {
       service_account_role_arn = module.ebs_csi_irsa.iam_role_arn
     }
