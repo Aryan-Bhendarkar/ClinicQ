@@ -1,0 +1,26 @@
+# GitOps: ArgoCD watches this repository and keeps the cluster equal to helm/clinicq
+# with values-prod.yaml. A Git commit is the only way a change reaches the cluster.
+#   kubectl apply -f argocd/application.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: clinicq
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Aryan-Bhendarkar/ClinicQ.git
+    targetRevision: main
+    path: helm/clinicq
+    helm:
+      valueFiles:
+        - values-prod.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: clinicq
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

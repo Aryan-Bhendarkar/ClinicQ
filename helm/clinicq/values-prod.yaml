@@ -1,10 +1,16 @@
-# EKS. Image names/tags and the DB password are injected by the CI pipeline.
+# EKS, deployed by ArgoCD from this file (GitOps). The CI pipeline rewrites the two
+# image tags below with the new commit SHA after it pushes the images.
 backend:
+  image: ghcr.io/aryan-bhendarkar/clinicq-backend
+  tag: 8437dbefe1062ea770ed42fcc390f4c583471283
   replicas: 2
 frontend:
+  image: ghcr.io/aryan-bhendarkar/clinicq-frontend
+  tag: 8437dbefe1062ea770ed42fcc390f4c583471283
   replicas: 2
 postgres:
   storage: 5Gi
+  existingSecret: clinicq-db   # created with kubectl, so the password never enters Git
 ingress:
   enabled: true
   host: ""           # match the load balancer hostname directly
