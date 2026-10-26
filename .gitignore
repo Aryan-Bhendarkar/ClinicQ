@@ -31,3 +31,6 @@ tfplan
 
 # tooling
 .playwright-mcp/
+
+# office lock files
+~$*
