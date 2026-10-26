@@ -11,7 +11,7 @@ watched with Prometheus and Grafana.
 
 | Deliverable | Location |
 |---|---|
-| Presentation video (MP4) | [demo/ClinicQ-Presentation.mp4](demo/) |
+| Presentation video (MP4, 5 min) | [demo/ClinicQ-Presentation.mp4](demo/ClinicQ-Presentation.mp4): GitHub does not preview video, so use the **Download** button (or [direct link](https://github.com/Aryan-Bhendarkar/ClinicQ/raw/main/demo/ClinicQ-Presentation.mp4)) and play it locally |
 | Slide deck (PPT and PDF) | [demo/ClinicQ-DevOps-Capstone.pptx](demo/ClinicQ-DevOps-Capstone.pptx), [PDF](demo/ClinicQ-DevOps-Capstone.pdf) |
 | Evidence, problems solved, reproduction steps | [docs/SUBMISSION.md](docs/SUBMISSION.md) |
 | Screenshots | [docs/screenshots/](docs/screenshots/) |
